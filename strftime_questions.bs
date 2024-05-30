@@ -1,0 +1,122 @@
+<pre class='metadata'>
+Title: Timezones and the strftime function
+Shortname: xxx
+Revision: 1
+Status: I
+Date: 2024-05-30
+Group: WG14
+!Proposal Category: Liaison Question
+!Target: C2y/C3a
+Editor: Nick Stoughton, nickstoughton@gmail.com
+ED: file:///home/nick/Documents/iso/posix/papers/strftime_questions.bs
+Metadata Order: Previous Revisions, Editor, Latest, Paper Source, Implementation, Issue Tracking, Project, Audience, Proposal Category, Target
+Markup Shorthands: markdown yes
+Toggle Diffs: no
+Abstract: Can `strftime()` access unspecified fields in the broken down time?
+</pre>
+
+
+<pre class="include-raw">
+path: resources/css/bikeshed-wording.html
+</pre>
+
+<div class="pagebreak"></div>
+
+# Changelog # {#changelog}
+## Revision 1 - May 30<sup>th</sup>, 2024 ## {#changelog-r1}
+
+- Initial version
+
+# Introduction # {#introduction}
+
+The `strftime` function lists fields in a broken down `struct tm` that may be used when calculating the output for any given conversion.
+However, additional fields may appear in the broken down time structure, and it is not clear if such additional fields may be used in such a conversion.
+In particular, there are timezones that exist, or have existed, that cannot be accurately represented by the `tm_isdst` field alone.
+POSIX 2024 permits, as an extension to C, the additional fields `tm_zone` and `tm_gmtoff` to be used for `%Z` and `%z` conversions. However, a strict reading of C23 would suggest that this is not permitted.
+
+It appears in C17 (which is what POSIX 2024 defers to) and C23 that the `%z` and `%Z` conversion may *only* refer to `tm_isdst`. Thus the following program, where the time specified falls in the period when DST is changing, is not strictly portable to non-POSIX C implementations:
+
+```cpp
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+
+int
+main ()
+{
+    char buf[100];
+    struct tm tm;
+
+    tm.tm_year = 2007 - 1900;
+    tm.tm_mon = 11;
+    tm.tm_mday = 9;
+    tm.tm_hour = 2;
+    tm.tm_min = 45;
+    tm.tm_sec = 0;
+    tm.tm_isdst = 1;
+#ifdef POSIX
+    tm.tm_gmtoff = 16200;
+    tm.tm_zone = NULL;
+#endif
+
+    strftime (buf, sizeof buf, "%s = %Y-%m-%d %H:%M:%S %z (%Z) in Caracas", &tm);
+    printf ("%s\n", buf);
+}
+```
+The program also shows a related issue: if `struct tm` contains fields other than those specified by the standard, the behavior
+may be undefined. On a POSIX system, without initialization of `tm_zone` the stack-allocated structure may have invalid pointers.
+
+So, the question is: is POSIX extending `strftime()` in an allowed way? This paper presents two options:
+- explicitly permitting additional fields to be used in any converion in an implementation defined manner.
+- extending the broken down time structure to allow for such corner cases
+
+# Proposed wording # {#proposed_wording}
+
+For both options, the wording is relative to the published ISO/IEC 9899:2023 standard.
+## Option 1 ## {#proposal1}
+
+Make the following changes to
+§7.29.3.5 The `strftime` function
+
+<blockquote>
+Each conversion specifier shall be replaced by appropriate characters as described in the following
+list. The appropriate characters shall be determined using the `LC_TIME` category of the current
+locale and by the values of zero or more members of the broken-down time structure pointed to
+by `timeptr`, as specified in brackets in the description.
+<ins>Additional members of the broken-down time structure may also be required in implementation defined extensions.</ins>
+If any of the <del>specified values is</del><ins>members of the broken-down time have values</ins>outside the
+normal range, the <del>characters stored are unspecified</del><ins>behavior is undefined</ins>.
+</blockquote>
+
+## Option 2 ## {#proposal2}
+
+§7.29.1 Components of time, para 6
+<blockquote>
+The tm structure shall contain at least the following members, in any order.389) The semantics of the
+members and their normal ranges are expressed in the comments.
+<table>
+<tr><td><tt>int tm_sec;</tt></td><td>// seconds after the minute -- [0, 60]</td></tr>
+<tr><td><tt>int tm_min;</tt></td><td>// minutes after the hour -- [0, 59]</td></tr>
+<tr><td><tt>int tm_hour;</tt></td><td>// hours since midnight -- [0, 23]</td></tr>
+<tr><td><tt>int tm_mday;</tt></td><td>// day of the month -- [1, 31]</td></tr>
+<tr><td><tt>int tm_mon;</tt></td><td>// months since January -- [0, 11]</td></tr>
+<tr><td><tt>int tm_year;</tt></td><td>// years since 1900</td></tr>
+<tr><td><tt>int tm_wday;</tt></td><td>// days since Sunday -- [0, 6]</td></tr>
+<tr><td><tt>int tm_yday;</tt></td><td>// days since January 1 -- [0, 365]</td></tr>
+<tr><td><tt>int tm_isdst;</tt></td><td>// Daylight Saving Time flag</td></tr>
+<tr><td><ins><tt>long tm_gmtoff;</tt></ins></td><td><ins>// Seconds east of UTC.</td></ins></tr>
+<tr><td><ins><tt>const char *tm_zone;</tt></ins></td><td><ins>// Timezone abbreviation.</td></ins></tr>
+</table>
+</blockquote>
+§7.29.3.5 The `strftime` function
+<blockquote>
+`%z` is replaced by the offset from UTC in the ISO 8601 format "-0430" (meaning 4 hours 30
+minutes behind UTC, west of Greenwich), or by no characters if no time zone is determinable.
+<ins>If `tm_isdst` is zero, the
+standard time offset is used. If `tm_isdst` is greater than zero, the daylight saving time
+offset is used. If `tm_isdst` is negative, no characters are returned.</ins>
+[tm_isdst<ins>, tm_gmtoff</ins>]
+
+`%Z` is replaced by the locale’s time zone name or abbreviation, or by no characters if no time zone is
+determinable. [tm_isdst<ins>, tm_zone</ins>]
+</blockquote>
