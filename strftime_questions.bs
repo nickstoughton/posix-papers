@@ -179,16 +179,17 @@ Make the following changes to
 <blockquote>
 %z is replaced by the offset from UTC in the ISO 8601 format “-0430”
 (meaning 4 hours 30 minutes behind UTC, west of Greenwich), or by no
-characters if no time zone is determinable.
-
-<del>[`tm_isdst`]</del>
-<ins>Behavior is undefined if
+characters if no time zone is
+determinable. <del>[`tm_isdst`]</del><ins>Behavior is undefined if
 the broken-down time structure does not have a value that could be
-returned by localtime or gmtime. [all members, including any
+returned by `localtime` or `gmtime`. [all members, including any
 non-standard additional members]</ins>
 
 `%Z` is replaced by the locale’s time zone name or abbreviation, or by no characters if no time zone is
-determinable. [<del>`tm_isdst`</del><ins>all members, including any non-standard additional members]</ins>]
+determinable. <del>[`tm_isdst`]</del><ins>Behavior is undefined if
+the broken-down time structure does not have a value that could be
+returned by `localtime` or `gmtime`. [all members, including any
+non-standard additional members]</ins>
 </blockquote>
 
 ## Option 2 ## {#proposal2}
