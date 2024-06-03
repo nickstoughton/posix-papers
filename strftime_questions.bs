@@ -177,12 +177,18 @@ Make the following changes to
 §7.29.3.5 The `strftime` function
 
 <blockquote>
-`%z` is replaced by the offset from UTC in the ISO 8601 format “`-0430`” (meaning 4 hours 30
-minutes behind UTC, west of Greenwich), or by no characters if no time zone is determinable.
-[<del>`tm_isdst`</del><ins>Behavior is undefined if the broken-down time structure does not have a value that could be returned by `localtime` or `gmtime`.</ins>]
+%z is replaced by the offset from UTC in the ISO 8601 format “-0430”
+(meaning 4 hours 30 minutes behind UTC, west of Greenwich), or by no
+characters if no time zone is determinable.
+
+<del>[`tm_isdst`]</del>
+<ins>Behavior is undefined if
+the broken-down time structure does not have a value that could be
+returned by localtime or gmtime. [all members, including any
+non-standard additional members]</ins>
 
 `%Z` is replaced by the locale’s time zone name or abbreviation, or by no characters if no time zone is
-determinable. [<del>`tm_isdst`</del><ins>Behavior is undefined if the broken-down time structure does not have a value that could be returned by `localtime` or `gmtime`.</ins>]
+determinable. [<del>`tm_isdst`</del><ins>all members, including any non-standard additional members]</ins>]
 </blockquote>
 
 ## Option 2 ## {#proposal2}
@@ -214,3 +220,7 @@ minutes behind UTC, west of Greenwich), or by no characters if no time zone is d
 `%Z` is replaced by the locale’s time zone name or abbreviation, or by no characters if no time zone is
 determinable. [<del>tm_isdst</del><ins>tm_zone</ins>]
 </blockquote>
+
+# Acknowledgements # {#Acknowledgements}
+
+Thanks to Paul Eggert and Geoff Clare for helping to formulate the wording.
