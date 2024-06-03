@@ -1506,6 +1506,7 @@ Possible extra rowspan handling
   <meta content="Bikeshed version 4afc1fdf9, updated Tue May 28 15:43:17 2024 -0700" name="generator">
   <link href="file:///home/nick/Documents/iso/posix/papers/strftime_questions.bs" rel="canonical">
   <link href="https://isocpp.org/favicon.ico" rel="icon">
+  <meta content="131f2377ad1307eff42cbfc75082a6a45a769e5a" name="revision">
   <meta content="dark light" name="color-scheme">
 <style>
 :root {
@@ -2352,7 +2353,7 @@ c-[il] { color: #000000 } /* Literal.Number.Integer.Long */
   </div>
   <div class="p-summary" data-fill-with="abstract">
    <h2 class="no-num no-toc no-ref heading settled" id="abstract"><span class="content">Abstract</span></h2>
-   <p>Can <code class="highlight"><c- n>strftime</c-><c- p>()</c-></code> access unspecified fields in the broken down time?</p>
+   <p>Can <code class="highlight"><c- n>strftime</c-></code> access unspecified fields in the broken-down time?</p>
   </div>
   <nav data-fill-with="table-of-contents" id="toc">
    <h2 class="no-num no-toc no-ref" id="contents">Table of Contents</h2>
@@ -2380,13 +2381,67 @@ c-[il] { color: #000000 } /* Literal.Number.Integer.Long */
      <p>Initial version</p>
    </ul>
    <h2 class="heading settled" data-level="2" id="introduction"><span class="secno">2. </span><span class="content">Introduction</span><a class="self-link" href="#introduction"></a></h2>
-   <p>The <code class="highlight"><c- n>strftime</c-></code> function lists fields in a broken down <code class="highlight"><c- k>struct</c-> <c- nc>tm</c-></code> that may be used when calculating the output for any given conversion.
-However, additional fields may appear in the broken down time structure, and it is not clear if such additional fields may be used in such a conversion.
-In particular, there are timezones that exist, or have existed, that cannot be accurately represented by the <code class="highlight"><c- n>tm_isdst</c-></code> field alone.
-POSIX 2024 permits, as an extension to C, the additional fields <code class="highlight"><c- n>tm_zone</c-></code> and <code class="highlight"><c- n>tm_gmtoff</c-></code> to be used for <code class="highlight"><c- o>%</c-><c- n>Z</c-></code> and <code class="highlight"><c- o>%</c-><c- n>z</c-></code> conversions. However, a strict reading of C23 would suggest that this is not permitted.</p>
-   <p>It appears in C17 (which is what POSIX 2024 defers to) and C23 that the <code class="highlight"><c- o>%</c-><c- n>z</c-></code> and <code class="highlight"><c- o>%</c-><c- n>Z</c-></code> conversion may <em>only</em> refer to <code class="highlight"><c- n>tm_isdst</c-></code>. Thus the following program, where the time specified falls in the period when DST is changing, is not strictly portable to non-POSIX C implementations:</p>
-<pre class="language-cpp highlight"><c- cp>#include</c-> &lt;stdio.h>
-<c- cp>#include</c-> &lt;stdlib.h>
+   <p>The <code class="highlight"><c- n>strftime</c-></code> function lists the <code class="highlight"><c- n>tm_isdst</c-></code> member of a broken-down <code class="highlight"><c- k>struct</c-> <c- nc>tm</c-></code> that is used (along with the <code class="highlight"><c- n>LC_TIME</c-></code> category of the current locale) when calculating the output for <code class="highlight"><c- o>%</c-><c- n>z</c-></code> and <code class="highlight"><c- o>%</c-><c- n>Z</c-></code> conversions.
+However, additional members may appear in <code class="highlight"><c- k>struct</c-> <c- nc>tm</c-></code>, and it is not clear whether these members can also be used.
+This matters because many timezones cannot be represented by the <code class="highlight"><c- n>tm_isdst</c-></code> field alone.</p>
+   <p>In particular, in POSIX-based systems <code class="highlight"><c- o>%</c-><c- n>z</c-></code> and <code class="highlight"><c- o>%</c-><c- n>Z</c-></code> behavior also depends on timezone information outside of <code class="highlight"><c- n>tm_isdst</c-></code> and <code class="highlight"><c- n>LC_CTIME</c-></code>.
+This timezone information is derived from the contents of the <code class="highlight"><c- n>TZ</c-></code> environment variable specified by POSIX, and <code class="highlight"><c- n>TZ</c-></code> affects <code class="highlight"><c- o>%</c-><c- n>z</c-></code> and <code class="highlight"><c- o>%</c-><c- n>Z</c-></code> indirectly via one of two mechanisms.</p>
+   <ul>
+    <li data-md>
+     <p>In POSIX.1-2017 and earlier, timezone information is in global state updated by POSIX’s <code class="highlight"><c- n>tzset</c-></code> function, which <code class="highlight"><c- n>strftime</c-></code> calls.</p>
+    <li data-md>
+     <p>In POSIX.1-2024, timezone information is also in the <code class="highlight"><c- k>struct</c-> <c- nc>tm</c-></code> members <code class="highlight"><c- n>tm_gmtoff</c-></code> and <code class="highlight"><c- n>tm_zone</c-></code>, which are extensions to the C standard.</p>
+   </ul>
+   <p>In some POSIX-based systems (e.g., Solaris) <code class="highlight"><c- o>%</c-><c- n>z</c-></code> and <code class="highlight"><c- o>%</c-><c- n>Z</c-></code> use only global state; in others (e.g., GNU/Linux) <code class="highlight"><c- o>%</c-><c- n>z</c-></code> and <code class="highlight"><c- o>%</c-><c- n>Z</c-></code> use only <code class="highlight"><c- n>tm_gmtoff</c-></code> and <code class="highlight"><c- n>tm_zone</c-></code>; and in still others (e.g., macOS) <code class="highlight"><c- o>%</c-><c- n>z</c-></code> and <code class="highlight"><c- o>%</c-><c- n>Z</c-></code> use a mixture of the two.</p>
+   <p>One interpretation of the C standard (call it A) is that the characters generated for <code class="highlight"><c- o>%</c-><c- n>z</c-></code> and <code class="highlight"><c- o>%</c-><c- n>Z</c-></code> are completely determined by <code class="highlight"><c- n>tm_isdst</c-></code> and <code class="highlight"><c- n>LC_TIME</c-></code>.
+Because interpretation (A) prohibits any dependency on the <code class="highlight"><c- n>TZ</c-></code> environment variable, it prohibits all POSIX-based systems, which is so implausible that it will not be discussed further here.</p>
+   <p>Another interpretation (call it B) is that <code class="highlight"><c- o>%</c-><c- n>z</c-></code> and <code class="highlight"><c- o>%</c-><c- n>Z</c-></code>’s behavior can also depend on information outside the scope of the C standard.
+Interpretation (B) would allow all POSIX-based systems.</p>
+   <p>A third interpretation (call it C) is like (B), except that it prohibits <code class="highlight"><c- o>%</c-><c- n>z</c-></code> and <code class="highlight"><c- o>%</c-><c- n>Z</c-></code>’s behavior from depending on <code class="highlight"><c- k>struct</c-> <c- nc>tm</c-></code> members like <code class="highlight"><c- n>tm_gmtoff</c-></code> and <code class="highlight"><c- n>tm_zone</c-></code> that are outside the scope of the C standard.
+Interpretation (C) would allow systems like Solaris, but would prohibit systems like GNU/Linux and macOS.</p>
+   <p>The following program illustrates differences between (B) and (C).</p>
+<pre class="language-cpp highlight"><c- c1>// Program 1</c->
+<c- cp>#include</c-> &lt;stdio.h>
+<c- cp>#include</c-> &lt;time.h>
+
+<c- b>int</c->
+<c- nf>main</c-> <c- p>()</c->
+<c- p>{</c->
+    <c- b>time_t</c-> <c- n>epoch</c-> <c- o>=</c-> <c- p>{</c-><c- mi>0</c-><c- p>};</c->
+    <c- b>char</c-> <c- n>gbuf</c-><c- p>[</c-><c- mi>100</c-><c- p>],</c-> <c- n>lbuf</c-><c- p>[</c-><c- mi>100</c-><c- p>];</c->
+    <c- k>struct</c-> <c- nc>tm</c-> <c- n>gtm</c-> <c- o>=</c-> <c- o>*</c->   <c- n>gmtime</c-> <c- p>(</c-><c- o>&amp;</c-><c- n>epoch</c-><c- p>);</c->
+    <c- k>struct</c-> <c- nc>tm</c-> <c- n>ltm</c-> <c- o>=</c-> <c- o>*</c-><c- n>localtime</c-> <c- p>(</c-><c- o>&amp;</c-><c- n>epoch</c-><c- p>);</c->
+    <c- n>strftime</c-> <c- p>(</c-><c- n>gbuf</c-><c- p>,</c-> <c- k>sizeof</c-> <c- n>gbuf</c-><c- p>,</c-> <c- s>"%%z=%z %%Z=%Z"</c-><c- p>,</c-> <c- o>&amp;</c-><c- n>gtm</c-><c- p>);</c->
+    <c- n>strftime</c-> <c- p>(</c-><c- n>lbuf</c-><c- p>,</c-> <c- k>sizeof</c-> <c- n>lbuf</c-><c- p>,</c-> <c- s>"%%z=%z %%Z=%Z"</c-><c- p>,</c-> <c- o>&amp;</c-><c- n>ltm</c-><c- p>);</c->
+    <c- n>printf</c-> <c- p>(</c-><c- s>"   gmtime %s tm_isdst=%d</c-><c- se>\n</c-><c- s>"</c-><c- p>,</c-> <c- n>gbuf</c-><c- p>,</c-> <c- n>gtm</c-><c- p>.</c-><c- n>tm_isdst</c-><c- p>);</c->
+    <c- n>printf</c-> <c- p>(</c-><c- s>"localtime %s tm_isdst=%d</c-><c- se>\n</c-><c- s>"</c-><c- p>,</c-> <c- n>lbuf</c-><c- p>,</c-> <c- n>ltm</c-><c- p>.</c-><c- n>tm_isdst</c-><c- p>);</c->
+<c- p>}</c->
+</pre>
+   <p>Suppose Program 1 is executed on a POSIX.1-2024 system with <code class="highlight"><c- n>TZ</c-><c- o>=</c-><c- s>"Europe/London"</c-></code> in the environment.
+At the epoch (1970-01-01 00:00:00 UTC), London observed British Standard Time, one hour ahead of UTC.
+Interpretation (B) would allow the following output, indicating that the epoch’s time zone is +0000 (UTC) when interpreted via <code class="highlight"><c- n>gmtime</c-></code>, and is +0100 (BST) when interpreted via <code class="highlight"><c- n>localtime</c-></code>:</p>
+<pre class="highlight">   <c- n>gmtime</c-> <c- o>%</c-><c- n>z</c-><c- o>=+</c-><c- mo>0000</c-> <c- o>%</c-><c- n>Z</c-><c- o>=</c-><c- n>UTC</c-> <c- n>tm_isdst</c-><c- o>=</c-><c- mi>0</c->
+<c- n>localtime</c-> <c- o>%</c-><c- n>z</c-><c- o>=+</c-><c- mo>0100</c-> <c- o>%</c-><c- n>Z</c-><c- o>=</c-><c- n>BST</c-> <c- n>tm_isdst</c-><c- o>=</c-><c- mi>0</c->
+</pre>
+   <p>However, interpretation (C) would prohibit this output because (C) requires <code class="highlight"><c- o>%</c-><c- n>z</c-></code> and <code class="highlight"><c- o>%</c-><c- n>Z</c-></code> to generate the same characters in both <code class="highlight"><c- n>strftime</c-></code> calls, as they both have the same <code class="highlight"><c- n>tm_isdst</c-></code> values.
+Instead, (C) would require output like this:</p>
+<pre class="highlight">   <c- n>gmtime</c-> <c- o>%</c-><c- n>z</c-><c- o>=+</c-><c- mo>0000</c-> <c- o>%</c-><c- n>Z</c-><c- o>=</c-><c- n>GMT</c-> <c- n>tm_isdst</c-><c- o>=</c-><c- mi>0</c->
+<c- n>localtime</c-> <c- o>%</c-><c- n>z</c-><c- o>=+</c-><c- mo>0000</c-> <c- o>%</c-><c- n>Z</c-><c- o>=</c-><c- n>GMT</c-> <c- n>tm_isdst</c-><c- o>=</c-><c- mi>0</c->
+</pre>
+   <p>or this:</p>
+<pre class="highlight">   <c- n>gmtime</c-> <c- o>%</c-><c- n>z</c-><c- o>=+</c-><c- mo>0100</c-> <c- o>%</c-><c- n>Z</c-><c- o>=</c-><c- n>BST</c-> <c- n>tm_isdst</c-><c- o>=</c-><c- mi>0</c->
+<c- n>localtime</c-> <c- o>%</c-><c- n>z</c-><c- o>=+</c-><c- mo>0100</c-> <c- o>%</c-><c- n>Z</c-><c- o>=</c-><c- n>BST</c-> <c- n>tm_isdst</c-><c- o>=</c-><c- mi>0</c->
+</pre>
+   <p>or this:</p>
+<pre class="highlight">   <c- n>gmtime</c-> <c- o>%</c-><c- n>z</c-><c- o>=</c-><c- mo>-0001</c-> <c- o>%</c-><c- n>Z</c-><c- o>=</c-><c- n>LMT</c-> <c- n>tm_isdst</c-><c- o>=</c-><c- mi>0</c->
+<c- n>localtime</c-> <c- o>%</c-><c- n>z</c-><c- o>=</c-><c- mo>-0001</c-> <c- o>%</c-><c- n>Z</c-><c- o>=</c-><c- n>LMT</c-> <c- n>tm_isdst</c-><c- o>=</c-><c- mi>0</c->
+</pre>
+   <p>depending on which standard time the POSIX implementation happens to choose, as London has observed each of these three forms of standard time at some point.</p>
+   <p>When <code class="highlight"><c- n>localtime</c-></code> or <code class="highlight"><c- n>gmtime</c-></code> is used, interpretation (B) is obviously better.
+However, when neither <code class="highlight"><c- n>localtime</c-></code> nor <code class="highlight"><c- n>gmtime</c-></code> is involved, interpretation (C) can be better.
+For example:</p>
+<pre class="language-cpp highlight"><c- c1>// Program 2</c->
+<c- cp>#include</c-> &lt;stdio.h>
 <c- cp>#include</c-> &lt;time.h>
 
 <c- b>int</c->
@@ -2394,31 +2449,50 @@ POSIX 2024 permits, as an extension to C, the additional fields <code class="hig
 <c- p>{</c->
     <c- b>char</c-> <c- n>buf</c-><c- p>[</c-><c- mi>100</c-><c- p>];</c->
     <c- k>struct</c-> <c- nc>tm</c-> <c- n>tm</c-><c- p>;</c->
+    <c- n>tm</c-><c- p>.</c-><c- n>tm_isdst</c-> <c- o>=</c-> <c- mi>0</c-><c- p>;</c->
+    <c- n>strftime</c-> <c- p>(</c-><c- n>buf</c-><c- p>,</c-> <c- k>sizeof</c-> <c- n>buf</c-><c- p>,</c-> <c- s>"%%z=%z %%Z=%Z"</c-><c- p>,</c-> <c- o>&amp;</c-><c- n>tm</c-><c- p>);</c->
+    <c- n>puts</c-> <c- p>(</c-><c- n>buf</c-><c- p>);</c->
+<c- p>}</c->
+</pre>
+   <p>Suppose Program 2 is executed on a POSIX.1-2024 system with <code class="highlight"><c- n>TZ</c-><c- o>=</c-><c- s>"Europe/London"</c-></code> in the environment.
+Interpretation (B) says strftime can access the uninitialized <code class="highlight"><c- n>tm_gmtoff</c-></code> and <code class="highlight"><c- n>tm_zone</c-></code> members, leading to undefined behavior; systems like GNU/Linux and macOS behave this way and have undefined behavior up to and including core dumps.
+Interpretation (C) says the output is “<code class="highlight"><c- o>%</c-><c- n>z</c-><c- o>=+</c-><c- mo>0000</c-> <c- o>%</c-><c- n>Z</c-><c- o>=</c-><c- n>GMT</c-></code>”, “<code class="highlight"><c- o>%</c-><c- n>z</c-><c- o>=+</c-><c- mo>0100</c-> <c- o>%</c-><c- n>Z</c-><c- o>=</c-><c- n>BST</c-></code>”, or “<code class="highlight"><c- o>%</c-><c- n>z</c-><c- o>=</c-><c- mo>-0001</c-> <c- o>%</c-><c- n>Z</c-><c- o>=</c-><c- n>LMT</c-></code>” depending on which of London’s three standard times the implementation chooses, so there is no undefined behavior; systems like Solaris behave this way.
+An application developer might prefer interpretation (C) for Program 2 even though the output is indeterminate, as it at least avoids undefined behavior.</p>
+   <p>In practice, code like Program 1 is far more common than uses like Program 2.
+This has been confirmed by an <a href="https://austingroupbugs.net/view.php?id=1797#c6793">informal survey of public code on GitHub</a>, and this suggests that if no interpretation can be compatible with both Program 1 and Program 2, compatibility with Program 1 should be preferred.</p>
+   <p>There is one additional related issue.
+The C standard’s <code class="highlight"><c- k>struct</c-> <c- nc>tm</c-></code> members do not suffice to specify times unambiguously, even when <code class="highlight"><c- n>tm_isdst</c-></code> is specified.
+For example:</p>
+<pre class="language-cpp highlight"><c- c1>// Program 3</c->
+<c- cp>#include</c-> &lt;stdio.h>
+<c- cp>#include</c-> &lt;time.h>
 
+<c- b>int</c->
+<c- nf>main</c-> <c- p>()</c->
+<c- p>{</c->
+    <c- b>char</c-> <c- n>buf</c-><c- p>[</c-><c- mi>100</c-><c- p>];</c->
+    <c- k>struct</c-> <c- nc>tm</c-> <c- n>tm</c-><c- p>;</c->
     <c- n>tm</c-><c- p>.</c-><c- n>tm_year</c-> <c- o>=</c-> <c- mi>2007</c-> <c- o>-</c-> <c- mi>1900</c-><c- p>;</c->
     <c- n>tm</c-><c- p>.</c-><c- n>tm_mon</c-> <c- o>=</c-> <c- mi>11</c-><c- p>;</c->
     <c- n>tm</c-><c- p>.</c-><c- n>tm_mday</c-> <c- o>=</c-> <c- mi>9</c-><c- p>;</c->
     <c- n>tm</c-><c- p>.</c-><c- n>tm_hour</c-> <c- o>=</c-> <c- mi>2</c-><c- p>;</c->
     <c- n>tm</c-><c- p>.</c-><c- n>tm_min</c-> <c- o>=</c-> <c- mi>45</c-><c- p>;</c->
     <c- n>tm</c-><c- p>.</c-><c- n>tm_sec</c-> <c- o>=</c-> <c- mi>0</c-><c- p>;</c->
-    <c- n>tm</c-><c- p>.</c-><c- n>tm_isdst</c-> <c- o>=</c-> <c- mi>1</c-><c- p>;</c->
+    <c- n>tm</c-><c- p>.</c-><c- n>tm_isdst</c-> <c- o>=</c-> <c- mi>0</c-><c- p>;</c->
 <c- cp>#ifdef POSIX</c->
-    <c- n>tm</c-><c- p>.</c-><c- n>tm_gmtoff</c-> <c- o>=</c-> <c- mi>16200</c-><c- p>;</c->
-    <c- n>tm</c-><c- p>.</c-><c- n>tm_zone</c-> <c- o>=</c-> NULL<c- p>;</c->
+    <c- n>tm</c-><c- p>.</c-><c- n>tm_gmtoff</c-> <c- o>=</c-> <c- mi>4</c-> <c- o>*</c-> <c- mi>60</c-> <c- o>*</c-> <c- mi>60</c-><c- p>;</c->
 <c- cp>#endif</c->
-
-    <c- n>strftime</c-> <c- p>(</c-><c- n>buf</c-><c- p>,</c-> <c- k>sizeof</c-> <c- n>buf</c-><c- p>,</c-> <c- s>"%s = %Y-%m-%d %H:%M:%S %z (%Z) in Caracas"</c-><c- p>,</c-> <c- o>&amp;</c-><c- n>tm</c-><c- p>);</c->
-    <c- n>printf</c-> <c- p>(</c-><c- s>"%s</c-><c- se>\n</c-><c- s>"</c-><c- p>,</c-> <c- n>buf</c-><c- p>);</c->
+    <c- n>strftime</c-> <c- p>(</c-><c- n>buf</c-><c- p>,</c-> <c- k>sizeof</c-> <c- n>buf</c-><c- p>,</c-> <c- s>"%Y-%m-%d %H:%M:%S %z"</c-><c- p>,</c-> <c- o>&amp;</c-><c- n>tm</c-><c- p>);</c->
+    <c- n>puts</c-> <c- p>(</c-><c- n>buf</c-><c- p>);</c->
 <c- p>}</c->
 </pre>
-   <p>The program also shows a related issue: if <code class="highlight"><c- k>struct</c-> <c- nc>tm</c-></code> contains fields other than those specified by the standard, the behavior
-may be undefined. On a POSIX system, without initialization of <code class="highlight"><c- n>tm_zone</c-></code> the stack-allocated structure may have invalid pointers.</p>
-   <p>So, the question is: is POSIX extending <code class="highlight"><c- n>strftime</c-><c- p>()</c-></code> in an allowed way? This paper presents two options:</p>
+   <p>On a platform taking interpretation (C) when <code class="highlight"><c- n>TZ</c-><c- o>=</c-><c- s>"America/Caracas"</c-></code> Program 3 can output either “<code class="highlight"><c- mi>2007-12-09</c-> <c- mo>02</c-><c- o>:</c-><c- mi>45</c-><c- o>:</c-><c- mo>00</c-> <c- mo>-0430</c-></code>” or “<code class="highlight"><c- mi>2007-12-09</c-> <c- mo>02</c-><c- o>:</c-><c- mi>45</c-><c- o>:</c-><c- mo>00</c-> <c- mo>-0400</c-></code>” because both timestamps are equally plausible: Venezuela standard time was adjusted at 03:00 that day by moving the clocks backwards 30 minutes, and there is no way for the application to specify which of the two timestamps is desired. A POSIX.1-2014 implementation taking interpretation (B) has no problem with ambiguity, as it can inspect <code class="highlight"><c- n>tm_gmtoff</c-></code>.</p>
+   <p>So, the question is: is POSIX extending <code class="highlight"><c- n>strftime</c-></code> in an allowed way? This paper presents two options:</p>
    <ul>
     <li data-md>
-     <p>explicitly permitting additional fields to be used in any converion in an implementation defined manner.</p>
+     <p>Explicitly permit additional members to be used in <code class="highlight"><c- o>%</c-><c- n>z</c-></code> and <code class="highlight"><c- o>%</c-><c- n>Z</c-></code> conversions.</p>
     <li data-md>
-     <p>extending the broken down time structure to allow for such corner cases</p>
+     <p>Extend the broken-down time structure to handle <code class="highlight"><c- o>%</c-><c- n>z</c-></code> and <code class="highlight"><c- o>%</c-><c- n>Z</c-></code> conversions.</p>
    </ul>
    <h2 class="heading settled" data-level="3" id="proposed_wording"><span class="secno">3. </span><span class="content">Proposed wording</span><a class="self-link" href="#proposed_wording"></a></h2>
    <p>For both options, the wording is relative to the published ISO/IEC 9899:2023 standard.</p>
@@ -2426,19 +2500,19 @@ may be undefined. On a POSIX system, without initialization of <code class="high
    <p>Make the following changes to
 §7.29.3.5 The <code class="highlight"><c- n>strftime</c-></code> function</p>
    <blockquote>
-     Each conversion specifier shall be replaced by appropriate characters as described in the following
-list. The appropriate characters shall be determined using the <code class="highlight"><c- n>LC_TIME</c-></code> category of the current
-locale and by the values of zero or more members of the broken-down time structure pointed to
-by <code class="highlight"><c- n>timeptr</c-></code>, as specified in brackets in the description. 
-    <ins>Additional members of the broken-down time structure may also be required in implementation defined extensions.</ins>
-     If any of the 
-    <del>specified values is</del>
-    <ins>members of the broken-down time have values</ins>
-    outside the
-normal range, the 
-    <del>characters stored are unspecified</del>
-    <ins>behavior is undefined</ins>
-    . 
+     <code class="highlight"><c- o>%</c-><c- n>z</c-></code> is replaced by the offset from UTC in the ISO 8601 format “<code class="highlight"><c- mo>-0430</c-></code>” (meaning 4 hours 30
+minutes behind UTC, west of Greenwich), or by no characters if no time zone is determinable.
+[
+    <del><code class="highlight"><c- n>tm_isdst</c-></code></del>
+    <ins>Behavior is undefined if the broken-down time structure does not have a value that could be returned by <code class="highlight"><c- n>localtime</c-></code> or <code class="highlight"><c- n>gmtime</c-></code>.</ins>
+    ] 
+    <p>
+     <code class="highlight"><c- o>%</c-><c- n>Z</c-></code> is replaced by the locale’s time zone name or abbreviation, or by no characters if no time zone is
+determinable. [
+     <del><code class="highlight"><c- n>tm_isdst</c-></code></del>
+     <ins>Behavior is undefined if the broken-down time structure does not have a value that could be returned by <code class="highlight"><c- n>localtime</c-></code> or <code class="highlight"><c- n>gmtime</c-></code>.</ins>
+     ]
+    </p>
    </blockquote>
    <h3 class="heading settled" data-level="3.2" id="proposal2"><span class="secno">3.2. </span><span class="content">Option 2</span><a class="self-link" href="#proposal2"></a></h3>
    <p>§7.29.1 Components of time, para 6</p>
@@ -2502,17 +2576,16 @@ members and their normal ranges are expressed in the comments.
     §7.29.3.5 The <code class="highlight"><c- n>strftime</c-></code> function 
    <blockquote>
      <code class="highlight"><c- o>%</c-><c- n>z</c-></code> is replaced by the offset from UTC in the ISO 8601 format "-0430" (meaning 4 hours 30
-minutes behind UTC, west of Greenwich), or by no characters if no time zone is determinable. 
-    <ins>If <code class="highlight"><c- n>tm_isdst</c-></code> is zero, the
-standard time offset is used. If <code class="highlight"><c- n>tm_isdst</c-></code> is greater than zero, the daylight saving time
-offset is used. If <code class="highlight"><c- n>tm_isdst</c-></code> is negative, no characters are returned.</ins>
-     [tm_isdst
-    <ins>, tm_gmtoff</ins>
+minutes behind UTC, west of Greenwich), or by no characters if no time zone is determinable.
+[
+    <del>tm_isdst</del>
+    <ins>tm_gmtoff</ins>
     ] 
     <p>
      <code class="highlight"><c- o>%</c-><c- n>Z</c-></code> is replaced by the locale’s time zone name or abbreviation, or by no characters if no time zone is
-determinable. [tm_isdst
-     <ins>, tm_zone</ins>
+determinable. [
+     <del>tm_isdst</del>
+     <ins>tm_zone</ins>
      ]
     </p>
    </blockquote>

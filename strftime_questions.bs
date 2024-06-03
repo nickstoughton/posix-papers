@@ -12,7 +12,7 @@ ED: file:///home/nick/Documents/iso/posix/papers/strftime_questions.bs
 Metadata Order: Previous Revisions, Editor, Latest, Paper Source, Implementation, Issue Tracking, Project, Audience, Proposal Category, Target
 Markup Shorthands: markdown yes
 Toggle Diffs: no
-Abstract: Can `strftime()` access unspecified fields in the broken down time?
+Abstract: Can `strftime` access unspecified fields in the broken-down time?
 </pre>
 
 
@@ -29,16 +29,89 @@ path: resources/css/bikeshed-wording.html
 
 # Introduction # {#introduction}
 
-The `strftime` function lists fields in a broken down `struct tm` that may be used when calculating the output for any given conversion.
-However, additional fields may appear in the broken down time structure, and it is not clear if such additional fields may be used in such a conversion.
-In particular, there are timezones that exist, or have existed, that cannot be accurately represented by the `tm_isdst` field alone.
-POSIX 2024 permits, as an extension to C, the additional fields `tm_zone` and `tm_gmtoff` to be used for `%Z` and `%z` conversions. However, a strict reading of C23 would suggest that this is not permitted.
+The `strftime` function lists the `tm_isdst` member of a broken-down `struct tm` that is used (along with the `LC_TIME` category of the current locale) when calculating the output for `%z` and `%Z` conversions.
+However, additional members may appear in `struct tm`, and it is not clear whether these members can also be used.
+This matters because many timezones cannot be represented by the `tm_isdst` field alone.
 
-It appears in C17 (which is what POSIX 2024 defers to) and C23 that the `%z` and `%Z` conversion may *only* refer to `tm_isdst`. Thus the following program, where the time specified falls in the period when DST is changing, is not strictly portable to non-POSIX C implementations:
+In particular, in POSIX-based systems `%z` and `%Z` behavior also depends on timezone information outside of `tm_isdst` and `LC_CTIME`.
+This timezone information is derived from the contents of the `TZ` environment variable specified by POSIX, and `TZ` affects `%z` and `%Z` indirectly via one of two mechanisms.
+
+- In POSIX.1-2017 and earlier, timezone information is in global state updated by POSIX’s `tzset` function, which `strftime` calls.
+
+- In POSIX.1-2024, timezone information is also in the `struct tm` members `tm_gmtoff` and `tm_zone`, which are extensions to the C standard.
+
+In some POSIX-based systems (e.g., Solaris) `%z` and `%Z` use only global state; in others (e.g., GNU/Linux) `%z` and `%Z` use only `tm_gmtoff` and `tm_zone`; and in still others (e.g., macOS) `%z` and `%Z` use a mixture of the two.
+
+One interpretation of the C standard (call it A) is that the characters generated for `%z` and `%Z` are completely determined by `tm_isdst` and `LC_TIME`.
+Because interpretation (A) prohibits any dependency on the `TZ` environment variable, it prohibits all POSIX-based systems, which is so implausible that it will not be discussed further here.
+
+Another interpretation (call it B) is that `%z` and `%Z`’s behavior can also depend on information outside the scope of the C standard.
+Interpretation (B) would allow all POSIX-based systems.
+
+A third interpretation (call it C) is like (B), except that it prohibits `%z` and `%Z`’s behavior from depending on `struct tm` members like `tm_gmtoff` and `tm_zone` that are outside the scope of the C standard.
+Interpretation (C) would allow systems like Solaris, but would prohibit systems like GNU/Linux and macOS.
+
+The following program illustrates differences between (B) and (C).
 
 ```cpp
+// Program 1
 #include <stdio.h>
-#include <stdlib.h>
+#include <time.h>
+
+int
+main ()
+{
+    time_t epoch = {0};
+    char gbuf[100], lbuf[100];
+    struct tm gtm = *   gmtime (&epoch);
+    struct tm ltm = *localtime (&epoch);
+    strftime (gbuf, sizeof gbuf, "%%z=%z %%Z=%Z", &gtm);
+    strftime (lbuf, sizeof lbuf, "%%z=%z %%Z=%Z", &ltm);
+    printf ("   gmtime %s tm_isdst=%d\n", gbuf, gtm.tm_isdst);
+    printf ("localtime %s tm_isdst=%d\n", lbuf, ltm.tm_isdst);
+}
+```
+
+Suppose Program 1 is executed on a POSIX.1-2024 system with `TZ="Europe/London"` in the environment.
+At the epoch (1970-01-01 00:00:00 UTC), London observed British Standard Time, one hour ahead of UTC.
+Interpretation (B) would allow the following output, indicating that the epoch’s time zone is +0000 (UTC) when interpreted via `gmtime`, and is +0100 (BST) when interpreted via `localtime`:
+
+```
+   gmtime %z=+0000 %Z=UTC tm_isdst=0
+localtime %z=+0100 %Z=BST tm_isdst=0
+```
+
+However, interpretation (C) would prohibit this output because (C) requires `%z` and `%Z` to generate the same characters in both `strftime` calls, as they both have the same `tm_isdst` values.
+Instead, (C) would require output like this:
+
+```
+   gmtime %z=+0000 %Z=GMT tm_isdst=0
+localtime %z=+0000 %Z=GMT tm_isdst=0
+```
+
+or this:
+
+```
+   gmtime %z=+0100 %Z=BST tm_isdst=0
+localtime %z=+0100 %Z=BST tm_isdst=0
+```
+
+or this:
+
+```
+   gmtime %z=-0001 %Z=LMT tm_isdst=0
+localtime %z=-0001 %Z=LMT tm_isdst=0
+```
+
+depending on which standard time the POSIX implementation happens to choose, as London has observed each of these three forms of standard time at some point.
+
+When `localtime` or `gmtime` is used, interpretation (B) is obviously better.
+However, when neither `localtime` nor `gmtime` is involved, interpretation (C) can be better.
+For example:
+
+```cpp
+// Program 2
+#include <stdio.h>
 #include <time.h>
 
 int
@@ -46,29 +119,54 @@ main ()
 {
     char buf[100];
     struct tm tm;
+    tm.tm_isdst = 0;
+    strftime (buf, sizeof buf, "%%z=%z %%Z=%Z", &tm);
+    puts (buf);
+}
+```
 
+Suppose Program 2 is executed on a POSIX.1-2024 system with `TZ="Europe/London"` in the environment.
+Interpretation (B) says strftime can access the uninitialized `tm_gmtoff` and `tm_zone` members, leading to undefined behavior; systems like GNU/Linux and macOS behave this way and have undefined behavior up to and including core dumps.
+Interpretation (C) says the output is “`%z=+0000 %Z=GMT`”, “`%z=+0100 %Z=BST`”, or “`%z=-0001 %Z=LMT`” depending on which of London’s three standard times the implementation chooses, so there is no undefined behavior; systems like Solaris behave this way.
+An application developer might prefer interpretation (C) for Program 2 even though the output is indeterminate, as it at least avoids undefined behavior.
+
+In practice, code like Program 1 is far more common than uses like Program 2.
+This has been confirmed by an [informal survey of public code on GitHub](https://austingroupbugs.net/view.php?id=1797#c6793), and this suggests that if no interpretation can be compatible with both Program 1 and Program 2, compatibility with Program 1 should be preferred.
+
+There is one additional related issue.
+The C standard’s `struct tm` members do not suffice to specify times unambiguously, even when `tm_isdst` is specified.
+For example:
+
+```cpp
+// Program 3
+#include <stdio.h>
+#include <time.h>
+
+int
+main ()
+{
+    char buf[100];
+    struct tm tm;
     tm.tm_year = 2007 - 1900;
     tm.tm_mon = 11;
     tm.tm_mday = 9;
     tm.tm_hour = 2;
     tm.tm_min = 45;
     tm.tm_sec = 0;
-    tm.tm_isdst = 1;
+    tm.tm_isdst = 0;
 #ifdef POSIX
-    tm.tm_gmtoff = 16200;
-    tm.tm_zone = NULL;
+    tm.tm_gmtoff = 4 * 60 * 60;
 #endif
-
-    strftime (buf, sizeof buf, "%s = %Y-%m-%d %H:%M:%S %z (%Z) in Caracas", &tm);
-    printf ("%s\n", buf);
+    strftime (buf, sizeof buf, "%Y-%m-%d %H:%M:%S %z", &tm);
+    puts (buf);
 }
 ```
-The program also shows a related issue: if `struct tm` contains fields other than those specified by the standard, the behavior
-may be undefined. On a POSIX system, without initialization of `tm_zone` the stack-allocated structure may have invalid pointers.
 
-So, the question is: is POSIX extending `strftime()` in an allowed way? This paper presents two options:
-- explicitly permitting additional fields to be used in any converion in an implementation defined manner.
-- extending the broken down time structure to allow for such corner cases
+On a platform taking interpretation (C) when `TZ="America/Caracas"` Program 3 can output either “`2007-12-09 02:45:00 -0430`” or “`2007-12-09 02:45:00 -0400`” because both timestamps are equally plausible: Venezuela standard time was adjusted at 03:00 that day by moving the clocks backwards 30 minutes, and there is no way for the application to specify which of the two timestamps is desired. A POSIX.1-2014 implementation taking interpretation (B) has no problem with ambiguity, as it can inspect `tm_gmtoff`.
+
+So, the question is: is POSIX extending `strftime` in an allowed way? This paper presents two options:
+- Explicitly permit additional members to be used in `%z` and `%Z` conversions.
+- Extend the broken-down time structure to handle `%z` and `%Z` conversions.
 
 # Proposed wording # {#proposed_wording}
 
@@ -79,13 +177,12 @@ Make the following changes to
 §7.29.3.5 The `strftime` function
 
 <blockquote>
-Each conversion specifier shall be replaced by appropriate characters as described in the following
-list. The appropriate characters shall be determined using the `LC_TIME` category of the current
-locale and by the values of zero or more members of the broken-down time structure pointed to
-by `timeptr`, as specified in brackets in the description.
-<ins>Additional members of the broken-down time structure may also be required in implementation defined extensions.</ins>
-If any of the <del>specified values is</del><ins>members of the broken-down time have values</ins>outside the
-normal range, the <del>characters stored are unspecified</del><ins>behavior is undefined</ins>.
+`%z` is replaced by the offset from UTC in the ISO 8601 format “`-0430`” (meaning 4 hours 30
+minutes behind UTC, west of Greenwich), or by no characters if no time zone is determinable.
+[<del>`tm_isdst`</del><ins>Behavior is undefined if the broken-down time structure does not have a value that could be returned by `localtime` or `gmtime`.</ins>]
+
+`%Z` is replaced by the locale’s time zone name or abbreviation, or by no characters if no time zone is
+determinable. [<del>`tm_isdst`</del><ins>Behavior is undefined if the broken-down time structure does not have a value that could be returned by `localtime` or `gmtime`.</ins>]
 </blockquote>
 
 ## Option 2 ## {#proposal2}
@@ -112,11 +209,8 @@ members and their normal ranges are expressed in the comments.
 <blockquote>
 `%z` is replaced by the offset from UTC in the ISO 8601 format "-0430" (meaning 4 hours 30
 minutes behind UTC, west of Greenwich), or by no characters if no time zone is determinable.
-<ins>If `tm_isdst` is zero, the
-standard time offset is used. If `tm_isdst` is greater than zero, the daylight saving time
-offset is used. If `tm_isdst` is negative, no characters are returned.</ins>
-[tm_isdst<ins>, tm_gmtoff</ins>]
+[<del>tm_isdst</del><ins>tm_gmtoff</ins>]
 
 `%Z` is replaced by the locale’s time zone name or abbreviation, or by no characters if no time zone is
-determinable. [tm_isdst<ins>, tm_zone</ins>]
+determinable. [<del>tm_isdst</del><ins>tm_zone</ins>]
 </blockquote>
