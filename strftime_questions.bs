@@ -164,9 +164,16 @@ main ()
 
 On a platform taking interpretation (C) when `TZ="America/Caracas"` Program 3 can output either “`2007-12-09 02:45:00 -0430`” or “`2007-12-09 02:45:00 -0400`” because both timestamps are equally plausible: Venezuela standard time was adjusted at 03:00 that day by moving the clocks backwards 30 minutes, and there is no way for the application to specify which of the two timestamps is desired. A POSIX.1-2014 implementation taking interpretation (B) has no problem with ambiguity, as it can inspect `tm_gmtoff`.
 
-So, the question is: is POSIX extending `strftime` in an allowed way? This paper presents two options:
-- Explicitly permit additional members to be used in `%z` and `%Z` conversions.
-- Extend the broken-down time structure to handle `%z` and `%Z` conversions.
+So, the question is: is POSIX extending `strftime` in an allowed way?
+This paper presents three options:
+1. Explicitly permit additional members to be used in `%z` and `%Z` conversions.
+2. Extend the broken-down time structure to handle `%z` and `%Z` conversions, and extend `localtime` and `gmtime` accordingly, where `localtime` returns a null pointer if no time zone is determinable.
+3. Like Option 2, except `localtime` instead sets `tm_zone` to an empty string if no time zone is determinable.
+
+Option 1 is the most conservative: it merely clarifies and/or changes the C standard to allow common behavior on POSIX-based systems.
+
+Options 2 and 3 would move POSIX’s `tm_gmtoff` and `tm_zone` into the C standard.
+The distinction between Options 2 and 3 does not matter for POSIX-based systems where the time zone is always determinable; it matters only for systems that cannot determine the time zone, where Option 2 would likely cause misbehavior in applications that expect `localtime` to succeed on everyday timestamps, while Option 3 would let these applications continue to behave as before.
 
 # Proposed wording # {#proposed_wording}
 
@@ -212,6 +219,28 @@ members and their normal ranges are expressed in the comments.
 <tr><td><ins><tt>const char *tm_zone;</tt></ins></td><td><ins>// Timezone abbreviation.</td></ins></tr>
 </table>
 </blockquote>
+
+§7.29.3.3 The `gmtime` functions
+<blockquote>
+The `gmtime` functions convert the calendar time pointed to by timer into a broken-down time,
+expressed as UTC. <ins>They set the broken-down time’s `tm_zone` member to a pointer to a string `"UTC"` with static storage duration.</ins>
+</blockquote>
+
+§7.29.3.4 The `localtime` functions
+<blockquote>
+**Description**
+
+The `localtime` functions convert the calendar time pointed to by timer into a broken-down time,
+expressed as local time. <ins>They set the broken-down time’s `tm_zone` member to a pointer to a string with lifetime that extends to the end of the program.
+*(Footnote:* Implementations may shorten the lifetime of a `tm_zone` string when a program uses extensions to the C standard, for example, by setting the `TZ` environment variable. *)*
+</ins>
+
+**Returns**
+
+The `localtime` functions return a pointer to the broken-down time, or a null pointer if the specified
+time cannot be converted to local time<ins> or if no time zone is determinable</ins>.
+</blockquote>
+
 §7.29.3.5 The `strftime` function
 <blockquote>
 `%z` is replaced by the offset from UTC in the ISO 8601 format "-0430" (meaning 4 hours 30
@@ -220,6 +249,18 @@ minutes behind UTC, west of Greenwich), or by no characters if no time zone is d
 
 `%Z` is replaced by the locale’s time zone name or abbreviation, or by no characters if no time zone is
 determinable. [<del>tm_isdst</del><ins>tm_zone</ins>]
+</blockquote>
+
+## Option 3 ## {#proposal3}
+
+This is the same as Option 2, except for “§7.29.3.4 The `localtime` functions” where the changes are as follows instead, with no change needed to the **Returns** paragraph:
+<blockquote>
+**Description**
+
+The `localtime` functions convert the calendar time pointed to by timer into a broken-down time,
+expressed as local time. <ins>They set the broken-down time’s `tm_zone` member to a pointer to a string with lifetime that extends to the end of the program.
+*(Footnote:* Implementations may shorten the lifetime of a `tm_zone` string when a program uses extensions to the C standard, for example, by setting the `TZ` environment variable. *)*
+If no time zone is determinable, these functions set the `tm_zone` member to an empty string and the `tm_gmtoff` member to 0.</ins>
 </blockquote>
 
 # Acknowledgements # {#Acknowledgements}
